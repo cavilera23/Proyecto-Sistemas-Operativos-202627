@@ -69,6 +69,11 @@ int Runtime::create(const std::string& name, Tick burst, int priority) {
     return model_.create(name, burst, priority);
 }
 
+std::size_t Runtime::load(const std::vector<WorkloadEntry>& entries) {
+    Lock lock(mutex_);
+    return model_.load(entries);
+}
+
 void Runtime::set_policy(Policy policy, Tick quantum) {
     Lock lock(mutex_);
     model_.set_policy(policy, quantum);

@@ -27,6 +27,14 @@ struct PCB {
     State state = State::New;
 };
 
+// Arrival is an absolute simulated tick; future processes remain NEW.
+struct WorkloadEntry {
+    std::string name;
+    Tick burst;
+    int priority;
+    Tick arrival;
+};
+
 struct Segment {
     Tick begin;
     Tick end;
@@ -37,6 +45,7 @@ struct Segment {
 class Model {
 public:
     int create(const std::string& name, Tick burst, int priority = 3);
+    std::size_t load(const std::vector<WorkloadEntry>& entries);
     void set_policy(Policy policy, Tick quantum = 2);
     void pause();
     void resume();
@@ -63,5 +72,6 @@ private:
 
     bool shorter(int lhs, int rhs) const;
     void dispatch();
+    void admit_arrivals();
 };
 } // namespace sim

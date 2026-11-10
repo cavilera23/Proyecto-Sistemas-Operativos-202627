@@ -41,6 +41,33 @@ int Model::create(const std::string& name, Tick burst, int priority) {
     return pid;
 }
 
+std::size_t Model::load(const std::vector<WorkloadEntry>& entries) {
+    // Commit a complete copy only after every row succeeds, preserving PIDs on error.
+    Model staged = *this;
+    for (const auto& entry : entries) {
+        if (entry.arrival < clock_)
+            throw std::invalid_argument("La llegada no puede ser anterior al reloj actual.");
+        const int pid = staged.create(entry.name, entry.burst, entry.priority);
+        auto& pcb = staged.processes_.at(pid);
+        pcb.arrival = entry.arrival;
+        if (entry.arrival > clock_) {
+            staged.ready_.pop_back();
+            pcb.state = State::New;
+        }
+    }
+    *this = std::move(staged);
+    return entries.size();
+}
+
+void Model::admit_arrivals() {
+    for (auto& [pid, pcb] : processes_) {
+        if (pcb.state == State::New && pcb.arrival <= clock_) {
+            ready_.push_back(pid);
+            pcb.state = State::Ready;
+        }
+    }
+}
+
 void Model::set_policy(Policy policy, Tick quantum) {
     if (quantum <= 0) throw std::invalid_argument("El quantum debe ser positivo.");
     policy_ = policy;
@@ -90,6 +117,7 @@ void Model::dispatch() {
 void Model::step() {
     if (clock_ == std::numeric_limits<Tick>::max())
         throw std::overflow_error("Se agoto el reloj simulado.");
+    admit_arrivals();
     dispatch();
     const int executed = current_.value_or(0);
     // Waiting accrues only in READY, never during a global pause.
@@ -106,6 +134,8 @@ void Model::step() {
     else
         history_.push_back({clock_, clock_ + 1, executed});
     ++clock_;
+    // Admit boundary arrivals before requeueing an expired RR slice.
+    admit_arrivals();
     if (current_) {
         auto& pcb = processes_.at(*current_);
         if (pcb.remaining == 0) {

@@ -103,6 +103,37 @@ void srtf() {
     require(ready_tie.processes().at(1).first_run == 0, "Desempate PID no determinista");
 }
 
+void batch() {
+    sim::Model model;
+    model.set_policy(sim::Policy::SRTF);
+    model.load({{"Job_A", 4, 2, 0}, {"Job_B", 2, 1, 1}, {"Job_C", 1, 3, 3}});
+    require(model.processes().at(2).state == sim::State::New, "Llegada futura no es NEW");
+    for (int i = 0; i < 7; ++i) { model.step(); invariant(model); }
+    require(execution(model) == std::vector<int>({1,2,2,3,1,1,1}), "Batch SRTF incorrecto");
+    require(model.processes().at(1).waiting == 3, "Espera batch incorrecta");
+    try {
+        model.load({{"Valido", 1, 3, 7}, {"Pasado", 1, 3, 6}});
+        require(false, "Se acepto llegada pasada");
+    } catch (const std::invalid_argument&) {}
+    require(model.processes().size() == 3 && model.create("Siguiente", 1) == 4,
+            "Carga fallida altero procesos o PID");
+    sim::Model idle;
+    idle.load({{"Futuro", 1, 3, 3}});
+    for (int i = 0; i < 4; ++i) { idle.step(); invariant(idle); }
+    require(execution(idle) == std::vector<int>({0,0,0,1}), "No se respeto llegada con IDLE");
+    require(idle.processes().at(1).waiting == 0 && idle.processes().at(1).first_run == 3,
+            "NEW acumulo espera o respuesta");
+    sim::Model rr_arrival;
+    rr_arrival.load({{"A", 4, 3, 0}, {"B", 1, 3, 2}});
+    for (int i = 0; i < 5; ++i) rr_arrival.step();
+    require(execution(rr_arrival) == std::vector<int>({1,1,2,1,1}),
+            "Llegada en limite de quantum incorrecta");
+    sim::Model unordered;
+    unordered.load({{"Tarde", 1, 3, 4}, {"Temprano", 1, 3, 1}});
+    for (int i = 0; i < 5; ++i) unordered.step();
+    require(execution(unordered) == std::vector<int>({0,2,0,0,1}), "Archivo desordenado incorrecto");
+}
+
 void switching() {
     sim::Model model;
     model.create("A", 5);
@@ -147,7 +178,7 @@ void parser() {
     for (const auto& command : {"ps", "pcb 1", "gantt", "stats", "help", "load archivo.txt"})
         require(sim::execute_command(command, runtime, out), "Consulta termino CLI");
     require(out.str().find("N/A") != std::string::npos, "Metricas prematuras fabricadas");
-    require(out.str().find("PENDIENTE") != std::string::npos, "Batch incompleto no declarado");
+    require(out.str().find("[ERROR") != std::string::npos, "Archivo inexistente aceptado");
     require(!sim::execute_command("exit", runtime, out), "exit no termino CLI");
 }
 
@@ -203,10 +234,11 @@ int main() {
     try {
         rr();
         srtf();
+        batch();
         switching();
         parser();
         concurrency();
-        std::cout << "OK: RR, SRTF, PCB, cambios, CLI y concurrencia\n";
+        std::cout << "OK: RR, SRTF, batch, PCB, cambios, CLI y concurrencia\n";
     } catch (const std::exception& ex) {
         std::cerr << "FALLO: " << ex.what() << '\n';
         return 1;
