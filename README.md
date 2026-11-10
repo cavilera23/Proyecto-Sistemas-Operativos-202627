@@ -62,7 +62,7 @@ quantum y se aplica a la siguiente decisión de CPU.
 `start` lo restaura y comienza un intervalo real completo. Una pausa global no
 acumula espera ni cambia el historial simulado. El modelo contempla NEW, READY,
 RUNNING, PAUSED y TERMINATED; no se inventan operaciones de E/S bloqueante que
-el enunciado no solicita. NEW es transitorio durante create.
+el enunciado no solicita. NEW es transitorio durante create y persiste para llegadas futuras de load.
 
 Un único `pthread_mutex_t` protege procesos, colas, reloj y configuración.
 Las consultas copian el modelo bajo el cerrojo e imprimen fuera de él. El motor
@@ -83,9 +83,31 @@ Las unidades se rotulan en ticks, aunque algunos ejemplos del enunciado usen `s`
 A 0–1, B 1–3, C 3–4, A 4–7; empates; cambio de política; entradas inválidas;
 consultas concurrentes; pausa/reanudación; cierre durante un retardo de 5000 ms;
 y cierre con EOF. `make sanitize` ejecuta las pruebas C++ con AddressSanitizer
-y UndefinedBehaviorSanitizer. La futura validación de #8 debe añadir el archivo
-batch real y conservar las evidencias de los escenarios completos de la sección 7.
+y UndefinedBehaviorSanitizer. Se incluye la traza batch exigida en `tests/workload_test.txt`.
 
 Uso de IA en esta entrega: Codex asistió con la propuesta, implementación y pruebas.
 El equipo debe revisar los resultados y registrar en el anexo obligatorio las
 herramientas, los prompts principales y la validación humana efectivamente realizada.
+
+## Carga por lotes
+
+`load tests/workload_test.txt` valida todo el archivo antes de insertar procesos.
+Cada fila contiene `nombre, burst, prioridad, arrival`; se permiten líneas vacías,
+comentarios que comiencen con `#` y espacios alrededor de campos. Burst debe ser
+positivo, prioridad 1–5 y arrival un entero no negativo. Las llegadas son ticks
+absolutos y no pueden ser anteriores al reloj al confirmar la carga. Un error
+rechaza el lote completo sin consumir PID. Los procesos futuros aparecen NEW,
+no acumulan espera y entran en READY antes de la decisión del tick de llegada.
+El orden del archivo determina los PID; se admiten llegadas desordenadas.
+En RR, una llegada en el límite de quantum se coloca antes del proceso
+recién reencolado. Cargar mientras corre el motor confirma el lote bajo mutex.
+
+Para reproducir el escenario 2: `set_sched SRTF`,
+`load tests/workload_test.txt`, `set_speed 50`, `start`; después de siete ticks,
+`pause`, `gantt` y `stats`. La traza hasta t=7 es A 0–1, B 1–3, C 3–4, A 4–7.
+Si se pausa después, se mostrarán también los ticks IDLE transcurridos.
+
+La ventana GUI es un bonus opcional. La gestión real de integrantes, commits,
+Issues y Kanban debe completarse por el equipo en GitHub; no se fabrica evidencia
+colaborativa. El informe de arquitectura y la declaración de asistencia se
+incluyen en `docs/informe_tecnico.md` y requieren revisión del equipo.

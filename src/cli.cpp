@@ -2,6 +2,8 @@
 
 #include <charconv>
 #include <iomanip>
+#include <fstream>
+#include <array>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -25,9 +27,51 @@ void count(const std::vector<std::string>& args, std::size_t minimum,
         throw std::invalid_argument(std::string("[ERROR DE SINTAXIS]: Cantidad de parametros invalida.\nUso correcto: ") + usage);
 }
 
+std::string trim(const std::string& value) {
+    const auto first = value.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return {};
+    return value.substr(first, value.find_last_not_of(" \t\r\n") - first + 1);
+}
+
+std::vector<WorkloadEntry> read_workload(const std::string& path) {
+    std::ifstream file(path);
+    if (!file) throw std::invalid_argument("No se pudo abrir el archivo: " + path);
+    std::vector<WorkloadEntry> entries;
+    std::string line;
+    std::size_t row = 0;
+    while (std::getline(file, line)) {
+        ++row;
+        line = trim(line);
+        if (line.empty() || line.front() == '#') continue;
+        try {
+            std::array<std::string, 4> fields;
+            std::size_t begin = 0;
+            for (std::size_t i = 0; i < fields.size(); ++i) {
+                const auto comma = line.find(',', begin);
+                if ((i < 3 && comma == std::string::npos) ||
+                    (i == 3 && comma != std::string::npos))
+                    throw std::invalid_argument("Se requieren cuatro campos CSV.");
+                fields[i] = trim(line.substr(begin, comma == std::string::npos ? comma : comma - begin));
+                begin = comma == std::string::npos ? line.size() : comma + 1;
+            }
+            if (fields[0].empty() || fields[0].find_first_of(" \t\r\n") != std::string::npos)
+                throw std::invalid_argument("El nombre debe ser una cadena sin espacios.");
+            entries.push_back({fields[0], number(fields[1], 1, INT64_MAX),
+                               static_cast<int>(number(fields[2], 1, 5)),
+                               number(fields[3], 0, INT64_MAX)});
+        } catch (const std::exception& ex) {
+            throw std::invalid_argument("Archivo " + path + ", linea " +
+                                        std::to_string(row) + ": " + ex.what());
+        }
+    }
+    if (file.bad()) throw std::runtime_error("Error de lectura del archivo: " + path);
+    if (entries.empty()) throw std::invalid_argument("El archivo no contiene procesos.");
+    return entries;
+}
+
 void help(std::ostream& out) {
     out << "create <nombre> <burst> [prioridad]  (prioridad 1-5; defecto 3)\n"
-        << "load <archivo>  (pendiente: issue #6)\n"
+        << "load <archivo>  (CSV: nombre, burst, prioridad, llegada absoluta)\n"
         << "ps | pcb <PID>\n"
         << "set_sched RR [quantum] | set_sched SRTF  (quantum por defecto 2)\n"
         << "set_speed <ms_por_tick>  (50-5000; defecto 1000)\n"
@@ -148,7 +192,9 @@ bool execute_command(const std::string& line, Runtime& runtime, std::ostream& ou
             out << "Velocidad: " << args[1] << " ms/tick\n";
         } else if (command == "load") {
             count(args, 2, 2, "load <archivo>");
-            out << "[PENDIENTE]: Carga batch corresponde al issue #6; no se cargo ningun proceso.\n";
+            const auto entries = read_workload(args[1]);
+            const auto loaded = runtime.load(entries);
+            out << "Procesos cargados: " << loaded << '\n';
         } else if (command == "ps" || command == "gantt" || command == "stats" ||
                    command == "start" || command == "pause" || command == "help" || command == "exit") {
             count(args, 1, 1, command.c_str());

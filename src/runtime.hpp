@@ -16,6 +16,7 @@ public:
     void shutdown();
     void join();
     int create(const std::string& name, Tick burst, int priority);
+    std::size_t load(const std::vector<WorkloadEntry>& entries);
     void set_policy(Policy policy, Tick quantum);
     void set_speed(int milliseconds);
     void start();
