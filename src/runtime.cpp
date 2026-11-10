@@ -13,7 +13,6 @@ void check(int result, const char* operation) {
     if (result) throw std::system_error(result, std::generic_category(), operation);
 }
 
-// Uses the POSIX lock/unlock functions required by the assignment.
 class Lock {
 public:
     explicit Lock(pthread_mutex_t& mutex) : mutex_(mutex) {
@@ -66,24 +65,29 @@ void Runtime::join() {
 
 int Runtime::create(const std::string& name, Tick burst, int priority) {
     Lock lock(mutex_);
-    return model_.create(name, burst, priority);
+    const int pid = model_.create(name, burst, priority);
+    if (active_) model_.resume();
+    return pid;
 }
 
 std::size_t Runtime::load(const std::vector<WorkloadEntry>& entries) {
     Lock lock(mutex_);
-    return model_.load(entries);
+    const auto count = model_.load(entries);
+    if (active_) model_.resume();
+    return count;
 }
 
 void Runtime::set_policy(Policy policy, Tick quantum) {
     Lock lock(mutex_);
     model_.set_policy(policy, quantum);
+    if (active_) model_.resume();
 }
 
 void Runtime::set_speed(int milliseconds) {
     if (milliseconds < 50 || milliseconds > 5000)
         throw std::invalid_argument("La velocidad debe estar entre 50 y 5000 ms.");
     Lock lock(mutex_);
-    speed_ = milliseconds; // Takes effect at the next tick interval.
+    speed_ = milliseconds;
 }
 
 void Runtime::start() {
@@ -149,8 +153,6 @@ void Runtime::run() {
         }
         const auto deadline = Clock::now() + std::chrono::milliseconds(milliseconds);
         while (true) {
-            // Real delays never hold the shared mutex. Small slices make exit
-            // responsive even when set_speed is 5000 ms per simulated tick.
             std::this_thread::sleep_for(std::min(deadline - Clock::now(),
                 std::chrono::duration_cast<Clock::duration>(std::chrono::milliseconds(10))));
             Lock lock(mutex_);

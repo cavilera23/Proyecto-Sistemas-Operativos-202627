@@ -13,7 +13,6 @@ enum class State { New, Ready, Running, Paused, Terminated };
 enum class Policy { RR, SRTF };
 const char* state_name(State state);
 
-// All durations are simulated ticks, independent of the real execution speed.
 struct PCB {
     int pid;
     std::string name;
@@ -27,7 +26,6 @@ struct PCB {
     State state = State::New;
 };
 
-// Arrival is an absolute simulated tick; future processes remain NEW.
 struct WorkloadEntry {
     std::string name;
     Tick burst;
@@ -38,10 +36,9 @@ struct WorkloadEntry {
 struct Segment {
     Tick begin;
     Tick end;
-    int pid; // 0 identifies IDLE.
+    int pid; // 0 identifica IDLE.
 };
 
-// Deterministic state machine. Runtime serializes access; tests use it directly.
 class Model {
 public:
     int create(const std::string& name, Tick burst, int priority = 3);

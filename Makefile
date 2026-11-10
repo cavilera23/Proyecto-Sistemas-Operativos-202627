@@ -5,7 +5,7 @@ LDFLAGS := -pthread
 COMMON := src/model.cpp src/runtime.cpp src/cli.cpp src/gui.cpp
 HEADERS := $(wildcard src/*.hpp)
 
-# GUI=auto enables the bonus when Qt Widgets is installed; GUI=0 is console-only.
+# GUI=auto habilita Qt Widgets cuando esta instalado; GUI=0 es solo consola
 GUI ?= auto
 QT_PACKAGE := $(shell pkg-config --exists Qt6Widgets 2>/dev/null && echo Qt6Widgets || (pkg-config --exists Qt5Widgets 2>/dev/null && echo Qt5Widgets))
 ifneq ($(GUI),0)
@@ -24,7 +24,6 @@ all: build/simulator
 build:
 	mkdir -p build
 
-# Rebuild when switching GUI=0/1 or compiler flags without requiring make clean.
 FORCE:
 
 build/flags: FORCE | build

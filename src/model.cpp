@@ -42,7 +42,6 @@ int Model::create(const std::string& name, Tick burst, int priority) {
 }
 
 std::size_t Model::load(const std::vector<WorkloadEntry>& entries) {
-    // Commit a complete copy only after every row succeeds, preserving PIDs on error.
     Model staged = *this;
     for (const auto& entry : entries) {
         if (entry.arrival < clock_)
@@ -80,7 +79,8 @@ void Model::pause() {
 }
 
 void Model::resume() {
-    if (current_) processes_.at(*current_).state = State::Running;
+    admit_arrivals();
+    dispatch();
 }
 
 bool Model::shorter(int lhs, int rhs) const {
@@ -94,7 +94,6 @@ void Model::dispatch() {
     if (policy_ == Policy::SRTF && !ready_.empty()) {
         auto best = std::min_element(ready_.begin(), ready_.end(),
                                     [this](int a, int b) { return shorter(a, b); });
-        // Equal remaining times never preempt the running process.
         if (!current_ || processes_.at(*best).remaining < processes_.at(*current_).remaining) {
             const int selected = *best;
             ready_.erase(best);
@@ -120,7 +119,6 @@ void Model::step() {
     admit_arrivals();
     dispatch();
     const int executed = current_.value_or(0);
-    // Waiting accrues only in READY, never during a global pause.
     for (int pid : ready_) ++processes_.at(pid).waiting;
     if (current_) {
         auto& pcb = processes_.at(*current_);
@@ -134,7 +132,6 @@ void Model::step() {
     else
         history_.push_back({clock_, clock_ + 1, executed});
     ++clock_;
-    // Admit boundary arrivals before requeueing an expired RR slice.
     admit_arrivals();
     if (current_) {
         auto& pcb = processes_.at(*current_);
@@ -150,5 +147,6 @@ void Model::step() {
             slice_ = 0;
         }
     }
+    dispatch();
 }
 } // namespace sim

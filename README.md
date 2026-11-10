@@ -1,113 +1,65 @@
-# Simulador de Kernel — Fase I
+## Compilar y ejecutar
 
-Implementación modular en C++17 para sistemas POSIX (Linux, WSL y macOS).
-Requiere `g++`, Make y soporte pthread. Las pruebas de consola requieren Python 3.
+Requiere `g++` con C++23, Make y pthread;
+La GUI requiere Qt 6 o Qt 5 Widgets y `pkg-config`.
 
 ```sh
 make
 ./build/simulator
-make test
-make sanitize
 ```
 
-## Estructura
+Qt se detecta automáticamente. `make GUI=1` exige GUI; `make GUI=0` compila
+solo consola. El sistema inicia pausado, con RR, quantum 2 y 1000 ms/tick.
 
-- `src/model.hpp/.cpp`: PCB, estados, cola de listos, RR, SRTF y reloj discreto.
-- `src/runtime.hpp/.cpp`: hilo motor, mutex, condición y operaciones sincronizadas.
-- `src/cli.hpp/.cpp`: comandos, validación y presentación de copias coherentes.
-- `src/main.cpp`: arranque de dos hilos POSIX (CLI y motor) y cierre mediante join.
-- `tests/`: pruebas deterministas del motor y pruebas del ejecutable.
+## Comandos
 
-## Ejemplo
+| Comando | Función |
+|---|---|
+| `create <nombre> <burst> [prioridad]` | Nombre sin espacios, burst positivo, prioridad 1–5 (defecto 3). |
+| `load <archivo>` | Carga CSV validado; un error rechaza todo el lote sin consumir PID. |
+| `ps` / `pcb <PID>` | Consulta procesos y PCB. |
+| `set_sched RR [quantum]` / `set_sched SRTF` | Cambia la política; quantum positivo, defecto 2. |
+| `set_speed <ms>` | Retardo por tick entre 50 y 5000 ms. |
+| `start` / `pause` | Reanuda o congela el reloj. |
+| `gantt` / `stats` | Historial de CPU y métricas. |
+| `gui` | Abre o vuelve a mostrar el monitor. |
+| `help` / `exit` | Ayuda o cierre limpio; EOF también cierra. |
+
+## Ejemplo batch
 
 ```text
-set_sched RR 2
-set_speed 1000
-create P1 5 2
-create P2 3 1
-create P3 2 3
-start
-ps
-pause
-pcb 1
 set_sched SRTF
+load tests/workload_test.txt
+gui
 start
-gantt
-stats
-exit
 ```
 
-El sistema inicia pausado, con RR, quantum 2 y 1000 ms por tick. `help` enumera
-los comandos. Los nombres no pueden contener espacios. La prioridad está entre
-1 y 5 (defecto 3). `set_speed` admite 50–5000 ms y afecta al siguiente intervalo.
-`set_sched RR` usa quantum 2 si se omite; SRTF no acepta quantum. Todos los
-comandos rechazan argumentos adicionales, enteros parciales y desbordamientos.
-EOF también cierra limpiamente.
+`gui` puede omitirse. Tras finalizar los procesos, usa `pause`, `gantt` y `stats`.
+Si el motor sigue activo después, registra IDLE.
 
-## Reglas de simulación
+CSV: `nombre, burst, prioridad, arrival`. Admite líneas vacías, comentarios con
+`#` al inicio y espacios alrededor de campos. Arrival es un tick absoluto no
+negativo, nunca anterior al reloj al confirmar la carga.
 
-Los tiempos son ticks enteros: el tiempo real solo controla la presentación.
-El motor avanza incluso en IDLE mientras esté iniciado. Cada paso consume el
-intervalo `[t,t+1)`. Las creaciones llegan al reloj actual; SRTF evalúa la nueva
-llegada antes de consumir el siguiente tick.
+## GUI
 
-RR mantiene FIFO y reencola al vencer el quantum; finalizar tiene precedencia
-sobre reencolar. SRTF desapropia solo por un restante estrictamente menor; los
-empates conservan al actual. Entre listos se desempata por llegada y PID.
-La prioridad se conserva en el PCB y no sustituye el criterio de SRTF.
-El cambio de algoritmo conserva las colas y PCB, reinicia el contador del
-quantum y se aplica a la siguiente decisión de CPU.
+Muestra procesos, tiempos del PCB, política, reloj, pausa, velocidad, métricas
+y Gantt; se actualiza cada 100 ms.
+La consola sigue operativa; cerrar la ventana mantiene la simulación y `gui`
+la reabre. `exit` cierra ambos.
 
-`pause` congela inmediatamente el reloj y marca PAUSED al proceso actual;
-`start` lo restaura y comienza un intervalo real completo. Una pausa global no
-acumula espera ni cambia el historial simulado. El modelo contempla NEW, READY,
-RUNNING, PAUSED y TERMINATED; no se inventan operaciones de E/S bloqueante que
-el enunciado no solicita. NEW es transitorio durante create y persiste para llegadas futuras de load.
+## Modelo y estructura
 
-Un único `pthread_mutex_t` protege procesos, colas, reloj y configuración.
-Las consultas copian el modelo bajo el cerrojo e imprimen fuera de él. El motor
-espera pausado mediante `pthread_cond_wait`, y realiza los retardos reales fuera
-del mutex, en fragmentos de hasta 10 ms para responder al cierre. No imprime
-sobre el prompt de la CLI. El propietario une los hilos antes de destruir recursos.
+`src/model.*` contiene PCB y planificación; `runtime.*`, motor y sincronización;
+`cli.*`, comandos; `gui.*`, monitor y comunicación; `main.cpp`, arranque y cierre.
+`tests/` contiene las pruebas y el workload del enunciado.
 
-Los segmentos de Gantt adyacentes del mismo PID se agrupan; IDLE queda registrado.
-WT acumula tiempo en READY, TAT = finalización − llegada y RT = primera ejecución
-− llegada. Los promedios incluyen solo procesos finalizados y muestran N/A si no
-hay ninguno. Uso de CPU = ticks ocupados / ticks transcurridos; en t=0 vale 0%.
-Las unidades se rotulan en ticks, aunque algunos ejemplos del enunciado usen `s`.
+## Pruebas
 
-## Validación
+```sh
+make test       # Motor, fronteras de tick, batch, métricas, CLI y concurrencia
+make gui-test   # Monitor offscreen, reapertura, cierre y fallo de Qt
+make sanitize   # AddressSanitizer y UndefinedBehaviorSanitizer
+```
 
-`make test` comprueba el Gantt RR `1,1,2,2,3,3,1,1,2,1`, con finalizaciones
-10/9/6, esperas 5/6/4 y respuestas 0/2/4. Comprueba también la traza SRTF
-A 0–1, B 1–3, C 3–4, A 4–7; empates; cambio de política; entradas inválidas;
-consultas concurrentes; pausa/reanudación; cierre durante un retardo de 5000 ms;
-y cierre con EOF. `make sanitize` ejecuta las pruebas C++ con AddressSanitizer
-y UndefinedBehaviorSanitizer. Se incluye la traza batch exigida en `tests/workload_test.txt`.
-
-Uso de IA en esta entrega: Codex asistió con la propuesta, implementación y pruebas.
-El equipo debe revisar los resultados y registrar en el anexo obligatorio las
-herramientas, los prompts principales y la validación humana efectivamente realizada.
-
-## Carga por lotes
-
-`load tests/workload_test.txt` valida todo el archivo antes de insertar procesos.
-Cada fila contiene `nombre, burst, prioridad, arrival`; se permiten líneas vacías,
-comentarios que comiencen con `#` y espacios alrededor de campos. Burst debe ser
-positivo, prioridad 1–5 y arrival un entero no negativo. Las llegadas son ticks
-absolutos y no pueden ser anteriores al reloj al confirmar la carga. Un error
-rechaza el lote completo sin consumir PID. Los procesos futuros aparecen NEW,
-no acumulan espera y entran en READY antes de la decisión del tick de llegada.
-El orden del archivo determina los PID; se admiten llegadas desordenadas.
-En RR, una llegada en el límite de quantum se coloca antes del proceso
-recién reencolado. Cargar mientras corre el motor confirma el lote bajo mutex.
-
-Para reproducir el escenario 2: `set_sched SRTF`,
-`load tests/workload_test.txt`, `set_speed 50`, `start`; después de siete ticks,
-`pause`, `gantt` y `stats`. La traza hasta t=7 es A 0–1, B 1–3, C 3–4, A 4–7.
-Si se pausa después, se mostrarán también los ticks IDLE transcurridos.
-
-La ventana GUI es un bonus opcional. La gestión real de integrantes, commits,
-Issues y Kanban debe completarse por el equipo en GitHub; no se fabrica evidencia
-colaborativa. El informe de arquitectura y la declaración de asistencia se
-incluyen en `docs/informe_tecnico.md` y requieren revisión del equipo.
+La prueba gráfica guarda `build/gui-preview.png`.

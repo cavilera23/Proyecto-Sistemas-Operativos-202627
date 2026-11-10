@@ -74,10 +74,10 @@ void srtf() {
     model.set_policy(sim::Policy::SRTF);
     model.create("Job_A", 4, 2);
     model.step();
-    model.create("Job_B", 2, 1); // Arrival t=1, no batch parser needed.
+    model.create("Job_B", 2, 1);
     model.step();
     model.step();
-    model.create("Job_C", 1, 3); // Arrival t=3.
+    model.create("Job_C", 1, 3);
     for (int i = 0; i < 4; ++i) { model.step(); invariant(model); }
     require(execution(model) == std::vector<int>({1,2,2,3,1,1,1}), "Traza SRTF incorrecta");
     require(model.processes().at(1).waiting == 3 && model.processes().at(2).waiting == 0 &&
@@ -151,6 +151,62 @@ void switching() {
             model.processes().at(2).completion, "Cambio de politica perdio procesos");
 }
 
+void boundary_states() {
+    sim::Model rr;
+    rr.create("A", 4);
+    rr.create("B", 1);
+    rr.resume();
+    require(rr.processes().at(1).state == sim::State::Running && rr.clock() == 0,
+            "start no despacho en t=0");
+    rr.step(); rr.step();
+    require(rr.processes().at(1).state == sim::State::Ready &&
+            rr.processes().at(2).state == sim::State::Running, "RR no despacho en limite de quantum");
+    require(rr.processes().at(2).remaining == 1 && !rr.processes().at(2).first_run,
+            "Despacho consumio rafaga o fabrico respuesta");
+    rr.pause();
+    require(rr.processes().at(2).state == sim::State::Paused, "pause marco el proceso anterior");
+    rr.resume(); rr.step();
+    require(rr.processes().at(2).completion == 3 &&
+            rr.processes().at(1).state == sim::State::Running, "No despacho tras finalizar");
+    invariant(rr);
+
+    sim::Model srtf;
+    srtf.set_policy(sim::Policy::SRTF);
+    srtf.load({{"A", 4, 2, 0}, {"B", 2, 1, 1}, {"C", 1, 3, 3}});
+    srtf.resume();
+    srtf.step();
+    require(srtf.clock() == 1 && srtf.processes().at(1).state == sim::State::Ready &&
+            srtf.processes().at(2).state == sim::State::Running, "SRTF no desapropio en t=1");
+    require(srtf.processes().at(2).remaining == 2 && srtf.processes().at(2).waiting == 0,
+            "Se consumio anticipadamente el siguiente tick");
+    srtf.step(); srtf.step();
+    require(srtf.processes().at(3).state == sim::State::Running, "No despacho llegada en t=3");
+    for (int i = 0; i < 4; ++i) srtf.step();
+    require(execution(srtf) == std::vector<int>({1,2,2,3,1,1,1}), "Cambio el Gantt al corregir estados");
+    invariant(srtf);
+
+    sim::Model idle;
+    idle.load({{"Futuro", 1, 3, 2}});
+    idle.step(); idle.step();
+    require(idle.processes().at(1).state == sim::State::Running && idle.busy_ticks() == 0,
+            "No despacho al salir de IDLE");
+
+    sim::Runtime runtime;
+    runtime.create("A", 8, 3);
+    runtime.start();
+    runtime.set_policy(sim::Policy::SRTF, 2);
+    runtime.create("B", 3, 3);
+    require(runtime.snapshot().processes().at(2).state == sim::State::Running,
+            "create activo no actualizo el despacho");
+    runtime.load({{"C", 1, 3, 0}});
+    require(runtime.snapshot().processes().at(3).state == sim::State::Running,
+            "load activo no actualizo el despacho");
+    runtime.pause();
+    const auto paused = runtime.snapshot();
+    require(paused.clock() == 0 && paused.busy_ticks() == 0 && paused.history().empty(),
+            "Replanificar avanzo el reloj");
+}
+
 void parser() {
     sim::Runtime runtime;
     const std::vector<std::string> invalid = {
@@ -193,7 +249,6 @@ void concurrency() {
     while (runtime.snapshot().clock() < 2 && steady_clock::now() < deadline)
         std::this_thread::sleep_for(milliseconds(5));
     require(runtime.snapshot().clock() >= 2, "Motor no avanzo");
-    // CLI-like concurrent creation, policy changes and snapshots while engine runs.
     for (int i = 0; i < 100; ++i) {
         runtime.create("Concurrente", 1, 3);
         runtime.set_policy(i % 2 ? sim::Policy::RR : sim::Policy::SRTF, 2);
@@ -204,7 +259,7 @@ void concurrency() {
     std::this_thread::sleep_for(milliseconds(120));
     require(runtime.snapshot().clock() == frozen.clock(), "pause no congelo el reloj");
     runtime.start();
-    runtime.start(); // Idempotent.
+    runtime.start();
     const auto resume_deadline = steady_clock::now() + seconds(2);
     while (runtime.snapshot().clock() == frozen.clock() && steady_clock::now() < resume_deadline)
         std::this_thread::sleep_for(milliseconds(5));
@@ -226,7 +281,7 @@ void concurrency() {
     sim::Runtime paused;
     paused.launch();
     paused.shutdown();
-    paused.join(); // Wakes a motor blocked in pthread_cond_wait.
+    paused.join();
 }
 }
 
@@ -236,6 +291,7 @@ int main() {
         srtf();
         batch();
         switching();
+        boundary_states();
         parser();
         concurrency();
         std::cout << "OK: RR, SRTF, batch, PCB, cambios, CLI y concurrencia\n";

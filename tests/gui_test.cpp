@@ -23,6 +23,8 @@ void wait_events(int milliseconds) {
 }
 
 int main(int argc, char** argv) {
+    qunsetenv("QT_QPA_PLATFORMTHEME");
+    qputenv("QT_STYLE_OVERRIDE", "Fusion");
     QApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
     try {
