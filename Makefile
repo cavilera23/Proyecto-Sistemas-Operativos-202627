@@ -1,6 +1,6 @@
 CXX := g++
 CPPFLAGS := -Isrc
-CXXFLAGS := -std=c++17 -Wall -Wextra -Wpedantic -Werror -pthread -O2
+CXXFLAGS := -std=c++23 -Wall -Wextra -Wpedantic -Werror -pthread -O2
 LDFLAGS := -pthread
 COMMON := src/model.cpp src/runtime.cpp src/cli.cpp
 HEADERS := $(wildcard src/*.hpp)
