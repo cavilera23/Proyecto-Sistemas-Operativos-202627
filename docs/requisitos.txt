@@ -1,0 +1,318 @@
+                                     PROYECTO - Fase I
+       Simulador de Kernel y Gestor de Procesos en Consola (Shell & Scheduling Engine)
+
+1. Escenario Hipotético e Introducción
+
+El grupo de Telemática de la Escuela de Ingeniería Informática ha sido contratado por una startup de
+robótica industrial para diseñar el núcleo ejecutor de un nuevo sistema operativo de bajo consumo.
+La arquitectura del sistema requiere la coexistencia de un entorno interactivo de comandos (CLI)
+que responda de forma inmediata a los operadores y un motor eficiente de planificación (Scheduler)
+que gestione el tiempo de procesador asignado a los procesos en ejecución.
+
+
+Para esta primera etapa (Fase 1), se ha encomendado a los equipos de desarrollo el diseño e
+implementación del motor de lógica de procesos y la Shell interactiva de gestión. El sistema
+debe ser capaz de simular la creación de procesos, su ciclo de vida, la asignación de prioridades, el
+mantenimiento del Process Control Block (PCB) y la planificación de la CPU bajo algoritmos
+apropiativos y no apropiativos, garantizando la concurrencia a través de hilos POSIX (pthread) y
+mecanismos de sincronización.
+
+2. Objetivos del Proyecto
+
+  ➢​ Aplicar conceptos de Concurrencia: Diseñar una arquitectura multihilo limpia en C/C++
+     utilizando pthread y exclusión mutua (pthread_mutex) para separar la entrada/salida de la
+     consola del motor de ejecución.
+  ➢​ Modelar el Control de Procesos (PCB): Estructurar y manipular adecuadamente la
+     información del ciclo de vida de los procesos y sus estados (NUEVO, LISTO, EJECUCIÓN,
+     PAUSADO/BLOQUEADO, FINALIZADO).
+  ➢​ Implementar Algoritmos de Planificación de CPU: Programar y contrastar las políticas
+     Round Robin (RR) y Shortest Remaining Time First (SRTF) / Prioridades Apropiativo,
+     calculando métricas reales de rendimiento.
+  ➢​ Procesamiento por Lotes (Batch Processing): Desarrollar un parser para la carga masiva y
+     automatizada de archivos de trazas (*workload*).
+  ➢​ Gestión Profesional de Proyectos de Software: Utilizar metodologías ágiles mediante Git,
+     GitHub, etiquetado de Issues y tableros tipo Kanban.
+
+3. Explicación de los componentes de la simulación
+
+La aplicación debe estructurarse obligatoriamente mediante al menos dos hilos principales de
+ejecución (POSIX Threads - pthreads) que corren de manera concurrente y se comunican a través
+de estructuras de datos compartidas (Colas de Procesos) protegidas por cerrojos de exclusión mutua
+(pthread_mutex_t):
+
+         Componente / Hilo                              Responsabilidad y Funcionamiento
+  Hilo CLI (Interfaz de Consola)         Encargado de la lectura interactiva de comandos del usuario,
+                                         parsing estricto de argumentos, validación de sintaxis,
+                                         despliegue de tablas de estado, consulta de PCB y
+                                         visualización del diagrama de Gantt. No debe bloquearse ni
+                                         colapsar por entradas inválidas mientras el procesador
+                                         simulado ejecuta tareas.
+  Hilo Motor de Scheduling (CPU)         Encargado de simular el reloj de la CPU (*clock ticks*), extraer
+                                         procesos de la cola de LISTOS según la política configurada,
+                                         simular el consumo de ráfaga (*burst time*), aplicar
+                                         desapropiación si corresponde, actualizar métricas y registrar
+                                         el historial de ejecución.
+                                                              Proyecto Sistemas Operativos - Fase I. Pág 1
+4. Lista de Comandos de la CLI y Validación de Entradas
+
+La Shell interactiva debe parsear y validar la sintaxis y los tipos de datos de cada comando. En caso
+de detectar errores de sintaxis, parámetros faltantes o tipos incorrectos, el Hilo CLI no debe
+colapsar, sino mostrar un mensaje descriptivo de error (por ejemplo: [ERROR]: Cantidad o tipo de
+parámetros inválido. Uso: create <nombre> <burst> [prioridad]) y solicitar la siguiente entrada.
+
+ Sintaxis del Comando        Parámetros y Validaciones Exigidas        Descripción de Funcionalidad
+ create          <nombre>    <nombre>: String sin espacios.            Crea un nuevo proceso con
+ <burst> [prioridad]         <burst>: Entero > 0.                      estado NUEVO, asigna un PID
+                             [prioridad]: Entero entre 1 y 5           único           autoincremental,
+                             (Opcional, Defecto: 3).                   construye su PCB y lo ingresa a
+                             Validar cantidad de argumentos y          la cola de LISTOS.
+                             rangos numéricos.
+ load <archivo>              <archivo>: String con la ruta del         Modo por lotes: Lee un archivo
+                             archivo.                                  de traza e inserta masivamente
+                             Validar existencia y formato del          los procesos en el sistema
+                             archivo antes de procesar.                respetando       sus       tiempos
+                                                                       simulados de llegada (Arrival
+                                                                       Time).
+ ps                          Ninguno. Validar que no se envíen         Despliega una tabla con el
+                             argumentos adicionales innecesarios.      estado actual de todos los
+                                                                       procesos (PID, Nombre, Estado,
+                                                                       Ráfaga Restante, Prioridad).
+ pcb <PID>                   PID: Entero positivo.                     Muestra el detalle extendido del
+                             Validar que el PID sea un número          Process Control Block (PCB) del
+                             entero y exista en el sistema.            proceso seleccionado (Tiempos
+                                                                       de Llegada, Ráfaga Inicial,
+                                                                       Restante, Espera 𝑊𝑇, Retorno
+                                                                       𝑇𝐴𝑇, Respuesta 𝑅𝑇).
+ set_sched     <algoritmo>   algoritmo: Debe ser exactamente RR        Establece     la    política    de
+ [quantum]                   o SRTF.                                   planificación activa del motor de
+                             quantum: Entero > 0                       CPU. Puede cambiarse en
+                             (Obligatorio/Opcional      para    RR,    caliente.
+                             Defecto: 2).
+                             Validar coincidencia de nombre de
+                             algoritmo y valor positivo de quantum.
+ set_speed                   <ms_por_tick>: Entero positivo en         Ajusta la velocidad del reloj
+ <ms_por_tick>               milisegundos.                             simulado del sistema (duración
+                             Validar que sea un valor numérico         del sleep real por cada ciclo de
+                             válido (ej. entre 50 y 5000 ms).          CPU).
+ start                       Ninguno.                                  Inicia o reanuda la ejecución del
+                                                                       Hilo Motor de Scheduling.
+ pause                       Ninguno.                                  Detiene momentáneamente el
+                                                                       reloj de la CPU simulada para
+                                                                       permitir la inspección estática
+                                                                       del sistema.
+ gantt                       Ninguno.                                  Imprime la representación en
+                                                                       texto del Diagrama de Gantt
+                                                                       acumulado hasta el instante
+                                                                       actual.
+ stats                       Ninguno.                                  Muestra las métricas globales
+                                                                       del sistema: Tiempo Promedio
+                                                                       de Espera ( ‾
+                                                                                   𝑊𝑇), Retorno ( ‾𝑇𝐴𝑇),
+
+                                                             Proyecto Sistemas Operativos - Fase I. Pág 2
+ Sintaxis del Comando        Parámetros y Validaciones Exigidas      Descripción de Funcionalidad
+                                                                     Respuesta ( ‾ 𝑅𝑇) y porcentaje de
+                                                                     uso de CPU.
+ gui  (OPCIONAL          /   Ninguno.                                Abre una ventana gráfica
+ BONUS)                                                              auxiliar (utilizando C++ y una
+                                                                     librería gráfica como Raylib,
+                                                                     SFML o Qt) para visualizar el
+                                                                     estado del sistema en tiempo
+                                                                     real.
+ help                        Ninguno.                                Muestra el manual de usuario
+                                                                     rápido de la CLI.
+ exit                        Ninguno.                                Libera la memoria dinámica,
+                                                                     detiene de forma limpia los hilos
+                                                                     y cierra la simulación.
+
+5. Formato de Salida por Consola Esperado
+
+Para asegurar una evaluación uniforme, las salidas de los comandos clave deben seguir el siguiente
+formato:
+
+Salida del comando ps
+
+PID    NOMBRE         ESTADO       BURST RESTANTE    PRIORIDAD​
+--------------------------------------------------------------​
+1      Proceso_A      RUNNING      3s                2​
+2      Proceso_B      READY        5s                1​
+3      Proceso_C      READY        2s                3​
+4      Proceso_D      TERMINATED   0s                2
+
+Salida del comando pcb 1
+
+==================================================​
+        CONTROL BLOCK DE PROCESO (PCB) - PID: 1​
+==================================================​
+Nombre del Proceso : Proceso_A​
+Estado Actual      : RUNNING​
+Prioridad          : 2​
+Tiempo de Llegada : 0 ticks​
+Ráfaga Inicial     : 5 ticks​
+Ráfaga Restante    : 3 ticks​
+Tiempo de Espera   : 2 ticks​
+Tiempo de Retorno : N/A (En ejecución)​
+Tiempo de Respuesta: 0 ticks​
+==================================================
+
+Ejemplo de Mensajes de Error por Validación en CLI
+
+> create Proceso_A​
+[ERROR DE SINTAXIS]: Parámetros insuficientes.​
+Uso correcto: create <nombre> <burst_time> [prioridad]​
+​
+> pcb abc​
+[ERROR DE TIPO]: El PID debe ser un número entero positivo.​
+​
+                                                           Proyecto Sistemas Operativos - Fase I. Pág 3
+> set_sched FIFO​
+[ERROR DE PARAMETRO]: Algoritmo no reconocido. Algoritmos válidos: RR,
+SRTF.
+
+Salida de los comandos gantt y stats
+
+DIAGRAMA DE GANTT (0 - 8 ticks):​
+[0-2s: P1] -> [2-4s: P2] -> [4-6s: P3] -> [6-8s: P1] -> [IDLE]​
+​
+ESTADÍSTICAS DEL SISTEMA:​
+- Procesos Finalizados      : 2 / 4​
+- Tiempo Promedio de Espera : 2.50 ticks​
+- Tiempo Promedio de Retorno: 6.00 ticks​
+- Uso de CPU                : 100.0%
+
+6. Consideraciones de la Simulación y Manejo del Tiempo
+
+Para lograr una sensación de simulación en "cámara lenta controlada" sin distorsionar el rigor
+matemático del cálculo de métricas del SO, los estudiantes deberán atender las siguientes reglas:
+  ●​ Reloj Simulado Discreto (*Clock Ticks*): El tiempo del sistema no se mide con el reloj real
+      de la laptop o computador a usar, sino con una variable entera acumulativa (clock_ticks) que
+      incrementa en + 1 por cada ciclo de CPU consumido.
+  ●​ Retardo Real (Speed Control): Por cada tick de CPU, el Hilo Motor ejecutará un retardo real
+      mediante usleep() o std::this_thread::sleep_for() equivalente al parámetro configurado en
+      set_speed (Por defecto: 1000 ms = 1 segundo real).
+  ●​ Sincronización mediante Mutex: Las colas de procesos y las variables globales deben
+      protegerse obligatoriamente con pthread_mutex_lock y pthread_mutex_unlock cada vez que
+      el Hilo CLI o el Hilo Motor lean o modifiquen el estado de los procesos.
+
+7. Escenarios de Prueba para Validación
+
+Escenario 1: Simulación Manual e Interactiva
+
+  ●​ Ejecutar la aplicación y configurar: set_sched RR 2.
+  ●​ Ajustar velocidad: set_speed 1000.
+  ●​ Crear 3 procesos:
+        ○​ create P1 5 2
+        ○​ create P2 3 1
+        ○​ create P3 2 3
+  ●​ Ingresar start. Inspeccionar la alternancia de procesos cada 2 segundos enviando el comando
+     ps.
+  ●​ Probar validación de errores ingresando comandos mal formados (ej. create BadProcess o
+     pcb xyz) y verificar que el sistema no colapse.
+  ●​ Durante la ejecución, pausar con pause, consultar el PCB de un proceso con pcb 1, cambiar a
+     set_sched SRTF y reanudar con start.
+  ●​ Verificar al finalizar los comandos gantt y stats.
+
+Escenario 2: Carga en Lote (Batch Mode) con Traza de Trabajo
+
+Crear un archivo de texto llamado workload_test.txt con el siguiente formato estructurado:
+# NOMBRE, BURST_TIME, PRIORIDAD, ARRIVAL_TIME​
+Job_A, 4, 2, 0​
+Job_B, 2, 1, 1​
+Job_C, 1, 3, 3
+  ●​ Iniciar el simulador y ejecutar: set_sched SRTF.
+                                                              Proyecto Sistemas Operativos - Fase I. Pág 4
+  ●​ Cargar el archivo: load workload_test.txt.
+  ●​ Escribir start y dejar correr la simulación.
+  ●​ Verificar la desapropiación inmediata en 𝑡 = 1 cuando llega Job_B (𝐵𝑇 = 2) desplazando a
+     Job_A (𝐵𝑇 = 3 restante).
+  ●​ Validar que la secuencia reportada en gantt coincida exactamente con: [0-1s: Job_A] -> [1-3s:
+     Job_B] -> [3-4s: Job_C] -> [4-7s: Job_A].
+
+8. Entregables y Artefactos a Desarrollar
+
+  ●​ Código Fuente Completo en C/C++: Organizado modularmente en archivos cabecera (.h /
+     .hpp) y fuente (.c / .cpp) con su respectivo Makefile o CMakeLists.txt. Todo el código debe
+     estar debidamente documentado.
+  ●​ Repositorio en GitHub con Gestión de Proyecto:
+         o​ Uso activo de commits por cada integrante.
+         o​ Creación de Issues categorizados para la asignación de módulos.
+         o​ Tablero Kanban de GitHub Projects organizado en columnas (To Do, In Progress,
+             Done).
+  ●​ Informe Técnico de Arquitectura (PDF): Documento breve que describa la estructura
+     modular del código, diagrama de hilos/sincronización, referencias bibliográficas y un Anexo
+     Obligatorio de Declaración del Uso de Inteligencia Artificial (detallando herramienta
+     utilizada, prompts principales y cómo gestionaron/validaron los resultados aportados, según lo
+     estipulado en la Sección 9).
+
+9. Requisitos Técnicos, Condiciones y Restricciones
+
+  ●​ Lenguaje y Compilación: Lenguaje C (estándar C11) o C++ (estándar C++17 en adelante).
+     Compilador gcc / g++ con soporte para hilos POSIX (-pthread).
+  ●​ Plataforma: Entornos basados en POSIX (Linux, WSL en Windows, macOS).
+  ●​ Conformación de Equipos: Grupos de máximo 3 personas (o 2 según distribución del curso).
+  ●​ Defensa y Evaluaciones (10% de la nota total del curso = 2 puntos sobre 20):
+        ○​ Evaluación Grupal y Código (50% = 1.0 pt): Demostración del funcionamiento
+            correcto de los algoritmos, la CLI (incluyendo robustez frente a errores) y la gestión del
+            proyecto en GitHub.
+        ○​ Defensa Individual (50% = 1.0 pt): Preguntas individuales sobre el código a cada
+            integrante. La presencia de todos los miembros en la defensa es de carácter
+            estrictamente obligatorio.
+  ●​ Uso Ético de Inteligencia Artificial: No está prohibido el uso de herramientas de IA
+     (ChatGPT, Claude, Copilot, etc.). Sin embargo, en caso de utilizarlas, deben ser empleadas
+     de forma ética y con proceso de pensamiento crítico, indicando actuación de rol de tutor
+     socrático o asistente de depuración. Los equipos deberán incluir en el informe técnico
+     (Sección 8) un anexo declarando: herramienta utilizada, prompts principales y cómo validaron
+     y gestionaron los resultados aportados por la herramienta.
+
+10. Cronograma y Criterios de Evaluación
+
+
+
+       Hito / Entregable                 Fecha de Entrega                    Ponderación (%)
+ Entrega y presentación de          Miércoles 11/11/2026 2:00pm         10% Nota Definitiva            (2.0
+ Proyecto Fase 1 (Código,           (Semana 9)                          Puntos / 20 pts)
+ GitHub, Informe)
+
+
+
+
+                                                             Proyecto Sistemas Operativos - Fase I. Pág 5
+Criterios de Evaluación Detallados (Escala Base de 2.0 Puntos)
+
+     Criterio de Evaluación                        Descripción                          Puntaje
+                                                                                       Máximo
+ Arquitectura Concurrente y        Uso correcto de pthread, separando Hilo          0.50 pts
+ Sincronización                    CLI de Hilo Motor con protección de
+                                   exclusión           mutua           mediante
+                                   pthread_mutex sin condiciones de
+                                   carrera.
+ Lógica de Procesos, PCB,          Implementación del ciclo de vida de los          0.50 pts
+ CLI y Validaciones                procesos, comandos de consulta (ps,
+                                   pcb, gantt, stats), formateo adecuado y
+                                   validación              estricta            de
+                                   entradas/parámetros          con manejo
+                                   limpio de errores sin colapsos.
+ Algoritmos de Planificación y     Funcionamiento exacto de Round Robin             0.50 pts
+ Batch                             y SRTF, lectura de archivos por lotes
+                                   (load)     y      cálculo    de      métricas
+                                   matemáticas.
+ Gestión de Proyecto          en   Evidencia de trabajo colaborativo,               0.30 pts
+ GitHub (Kanban)                   commits        individuales      distribuidos,
+                                   gestión de Issues y tablero Kanban
+                                   activo.
+ Informe     Técnico     y         Claridad de la arquitectura expresada en         0.20 pts
+ Documentación (inc. Anexo         el documento, código documentado y
+ IA)                               anexo de declaración de uso ético de IA.
+ TOTAL BASE                        Cumplimiento           total      de       los   2.00 pts
+                                   requerimientos obligatorios de la
+                                   Fase 1.
+ BONUS OPCIONAL: Interfaz          Despliegue de ventana interactiva                1.00 pto
+ Gráfica (GUI)                     mediante Raylib, SFML, Qt o ImGui para
+                                   visualizar la lista de procesos y diagrama
+                                   de Gantt.
+
+
+
+
+                                                              Proyecto Sistemas Operativos - Fase I. Pág 6
+
