@@ -162,7 +162,7 @@ void parser() {
         "set_sched RR -1", "set_sched SRTF 2", "set_sched RR 2 extra",
         "set_speed", "set_speed 49", "set_speed 5001", "set_speed abc",
         "ps extra", "gantt extra", "stats extra", "start extra", "pause extra",
-        "help extra", "exit extra", "load", "load a b", "desconocido"
+        "help extra", "gui extra", "exit extra", "load", "load a b", "desconocido"
     };
     for (const auto& command : invalid) {
         std::ostringstream out;

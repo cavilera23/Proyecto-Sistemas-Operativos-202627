@@ -111,6 +111,11 @@ Model Runtime::snapshot() const {
     return model_;
 }
 
+MonitorSnapshot Runtime::monitor_snapshot() const {
+    Lock lock(mutex_);
+    return {model_, active_, speed_};
+}
+
 std::string Runtime::error() const {
     Lock lock(mutex_);
     return error_;
