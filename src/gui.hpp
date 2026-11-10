@@ -9,9 +9,9 @@ class QWidget;
 #endif
 
 namespace sim {
-// The CLI only posts an atomic request; all Qt objects live on the main thread.
 void request_gui();
-void gui_event_loop(Runtime& runtime, const std::atomic<bool>& cli_finished);
+void gui_event_loop(Runtime& runtime, const std::atomic<bool>& cli_finished, const char* executable);
+int gui_monitor_main();
 #ifdef SIM_WITH_QT
 std::unique_ptr<QWidget> create_gui_window(Runtime& runtime);
 #endif

@@ -10,7 +10,6 @@ struct MonitorSnapshot {
     int milliseconds;
 };
 
-// Owns the shared model. No caller receives references into shared memory.
 class Runtime {
 public:
     Runtime();
@@ -35,7 +34,7 @@ private:
     mutable pthread_mutex_t mutex_;
     pthread_cond_t condition_;
     pthread_t engine_{};
-    bool launched_ = false; // Only the owning main thread accesses this flag.
+    bool launched_ = false;
     bool active_ = false;
     bool stopping_ = false;
     int speed_ = 1000;
