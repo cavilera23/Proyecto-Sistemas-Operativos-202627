@@ -4,6 +4,12 @@
 #include <pthread.h>
 
 namespace sim {
+struct MonitorSnapshot {
+    Model model;
+    bool active;
+    int milliseconds;
+};
+
 // Owns the shared model. No caller receives references into shared memory.
 class Runtime {
 public:
@@ -22,6 +28,7 @@ public:
     void start();
     void pause();
     Model snapshot() const;
+    MonitorSnapshot monitor_snapshot() const;
     std::string error() const;
 
 private:

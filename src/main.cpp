@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "gui.hpp"
 
 #include <iostream>
 #include <system_error>
@@ -11,6 +12,7 @@ int main() {
         pthread_t cli;
         int result = pthread_create(&cli, nullptr, sim::cli_entry, &shell);
         if (result) throw std::system_error(result, std::generic_category(), "pthread_create CLI");
+        sim::gui_event_loop(runtime, shell.finished);
         result = pthread_join(cli, nullptr);
         if (result) throw std::system_error(result, std::generic_category(), "pthread_join CLI");
         runtime.shutdown();

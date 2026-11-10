@@ -1,4 +1,5 @@
 #include "cli.hpp"
+#include "gui.hpp"
 
 #include <charconv>
 #include <iomanip>
@@ -75,7 +76,7 @@ void help(std::ostream& out) {
         << "ps | pcb <PID>\n"
         << "set_sched RR [quantum] | set_sched SRTF  (quantum por defecto 2)\n"
         << "set_speed <ms_por_tick>  (50-5000; defecto 1000)\n"
-        << "start | pause | gantt | stats | help | exit\n";
+        << "start | pause | gantt | stats | gui | help | exit\n";
 }
 
 void show_processes(const Model& model, std::ostream& out) {
@@ -196,13 +197,14 @@ bool execute_command(const std::string& line, Runtime& runtime, std::ostream& ou
             const auto loaded = runtime.load(entries);
             out << "Procesos cargados: " << loaded << '\n';
         } else if (command == "ps" || command == "gantt" || command == "stats" ||
-                   command == "start" || command == "pause" || command == "help" || command == "exit") {
+                   command == "start" || command == "pause" || command == "gui" || command == "help" || command == "exit") {
             count(args, 1, 1, command.c_str());
             if (command == "ps") show_processes(runtime.snapshot(), out);
             else if (command == "gantt") show_gantt(runtime.snapshot(), out);
             else if (command == "stats") show_stats(runtime.snapshot(), out);
             else if (command == "start") { runtime.start(); out << "Simulacion iniciada.\n"; }
             else if (command == "pause") { runtime.pause(); out << "Simulacion pausada.\n"; }
+            else if (command == "gui") { request_gui(); out << "Apertura del monitor grafico solicitada.\n"; }
             else if (command == "help") help(out);
             else { runtime.shutdown(); return false; }
         } else {
@@ -230,6 +232,7 @@ void* cli_entry(void* context) {
         shell.output << "[ERROR CLI]: " << ex.what() << '\n';
     }
     shell.runtime.shutdown();
+    shell.finished.store(true);
     return nullptr;
 }
 } // namespace sim
