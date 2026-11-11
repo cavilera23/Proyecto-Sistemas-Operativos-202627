@@ -221,7 +221,7 @@ bool execute_command(const std::string& line, Runtime& runtime, std::ostream& ou
 void* cli_entry(void* context) {
     auto& shell = *static_cast<Shell*>(context);
     try {
-        shell.output << "Simulador de Kernel (C++17 / pthread). Escriba help.\n";
+        shell.output << "Simulador de Kernel (C++23 / pthread). Escriba help.\n";
         std::string line;
         while (shell.output << "> " << std::flush, std::getline(shell.input, line)) {
             if (!execute_command(line, shell.runtime, shell.output)) break;
